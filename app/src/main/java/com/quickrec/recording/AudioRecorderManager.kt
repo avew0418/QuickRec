@@ -25,12 +25,14 @@ class AudioRecorderManager(
     val state: StateFlow<RecordingState> = _state.asStateFlow()
 
     fun startRecording() {
+        Log.d(TAG, "Action: startRecording requested. Current state: ${_state.value}")
         if (_state.value is RecordingState.Recording) {
             Log.w(TAG, "Already recording, ignoring start request")
             return
         }
 
         val outputFile = fileManager.createNewRecordingFile()
+        Log.d(TAG, "Output file path: ${outputFile.absolutePath}")
 
         try {
             recorder = createRecorder().apply {
@@ -58,6 +60,7 @@ class AudioRecorderManager(
     }
 
     fun stopRecording(): File? {
+        Log.d(TAG, "Action: stopRecording requested. Current state: ${_state.value}")
         val currentState = _state.value
         if (currentState !is RecordingState.Recording) {
             Log.w(TAG, "Not recording, ignoring stop request")
@@ -72,6 +75,7 @@ class AudioRecorderManager(
             recorder = null
             _state.value = RecordingState.Idle
             val file = File(currentState.filePath)
+            fileManager.scanFile(file)
             Log.i(TAG, "Recording stopped: ${file.name} (${file.length()} bytes)")
             file
         } catch (e: Exception) {

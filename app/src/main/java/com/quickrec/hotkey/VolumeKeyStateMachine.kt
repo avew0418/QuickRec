@@ -1,111 +1,84 @@
 package com.quickrec.hotkey
 
+import android.util.Log
+
 /**
- * Pure-logic state machine for detecting "hold Volume Up + triple-tap Volume Down".
- *
- * No Android dependency — fully unit-testable.
- *
- * States:
- *   IDLE → VOL_UP down → WAITING_HOLD
- *   WAITING_HOLD → held ≥ holdThresholdMs → ARMED
- *   ARMED → VOL_DOWN tapped [requiredTaps] times within tapWindowMs → TRIGGERED → callback
- *   Any state → VOL_UP released → IDLE
+ * Sequence-based state machine for detecting:
+ * Audio: UP -> DOWN -> DOWN
+ * Video: DOWN -> UP -> UP
  */
 class VolumeKeyStateMachine(
-    private val holdThresholdMs: Long = 400L,
-    private val tapWindowMs: Long = 800L,
-    private val requiredTaps: Int = 3,
-    private val onTriggered: () -> Unit = {}
+    private val windowMs: Long = 1800L,
+    private val cooldownMs: Long = 1000L,
+    private val onAudioHotkey: () -> Unit = {},
+    private val onVideoHotkey: () -> Unit = {}
 ) {
-    enum class State { IDLE, WAITING_HOLD, ARMED }
+    private val sequence = mutableListOf<Int>()
+    private var lastEventTimeMs: Long = 0L
+    private var lastTriggerTimeMs: Long = 0L
 
-    var currentState: State = State.IDLE
-        private set
+    companion object {
+        const val KEY_UP = 24
+        const val KEY_DOWN = 25
+        
+        private val AUDIO_SEQ = listOf(KEY_UP, KEY_DOWN, KEY_DOWN)
+        private val VIDEO_SEQ = listOf(KEY_DOWN, KEY_UP, KEY_UP)
+    }
 
-    private var volumeUpDownTimeMs: Long = 0L
-    private var tapCount: Int = 0
-    private var firstTapTimeMs: Long = 0L
-
-    /**
-     * @param keyCode  KEYCODE_VOLUME_UP (24) or KEYCODE_VOLUME_DOWN (25)
-     * @param repeatCount  from KeyEvent.getRepeatCount()
-     * @param eventTimeMs  SystemClock.uptimeMillis() from the KeyEvent
-     * @return true if the event was consumed (caller should not propagate)
-     */
     fun onKeyDown(keyCode: Int, repeatCount: Int, eventTimeMs: Long): Boolean {
-        return when (currentState) {
-            State.IDLE -> handleIdle(keyCode, repeatCount, eventTimeMs)
-            State.WAITING_HOLD -> handleWaiting(keyCode, repeatCount, eventTimeMs)
-            State.ARMED -> handleArmed(keyCode, repeatCount, eventTimeMs)
+        // Ignore system repeats
+        if (repeatCount > 0) return true
+
+        val now = eventTimeMs
+
+        // Cooldown check
+        if (now - lastTriggerTimeMs < cooldownMs) {
+            Log.d("VolumeKeyStateMachine", "Hotkey ignored due to cooldown")
+            return true
+        }
+
+        // Reset sequence if time window exceeded
+        if (now - lastEventTimeMs > windowMs) {
+            sequence.clear()
+        }
+
+        sequence.add(keyCode)
+        lastEventTimeMs = now
+        
+        Log.d("VolumeKeyStateMachine", "Volume key sequence updated: ${sequence.map { if (it == KEY_UP) "UP" else "DOWN" }}")
+
+        // Keep only last 3 keys
+        if (sequence.size > 3) {
+            sequence.removeAt(0)
+        }
+
+        checkSequence(now)
+
+        // Return true to consume events
+        return true
+    }
+
+    private fun checkSequence(now: Long) {
+        if (sequence == AUDIO_SEQ) {
+            Log.i("VolumeKeyStateMachine", "Audio hotkey matched: UP_DOWN_DOWN")
+            lastTriggerTimeMs = now
+            sequence.clear()
+            onAudioHotkey()
+        } else if (sequence == VIDEO_SEQ) {
+            Log.i("VolumeKeyStateMachine", "Video hotkey matched: DOWN_UP_UP")
+            lastTriggerTimeMs = now
+            sequence.clear()
+            onVideoHotkey()
         }
     }
 
-    fun onKeyUp(keyCode: Int, @Suppress("UNUSED_PARAMETER") eventTimeMs: Long): Boolean {
-        if (keyCode == KEY_VOLUME_UP && currentState != State.IDLE) {
-            reset()
-            return true
-        }
-        return currentState != State.IDLE
+    fun onKeyUp(keyCode: Int, eventTimeMs: Long): Boolean {
+        return keyCode == KEY_UP || keyCode == KEY_DOWN
     }
 
     fun reset() {
-        currentState = State.IDLE
-        volumeUpDownTimeMs = 0L
-        tapCount = 0
-        firstTapTimeMs = 0L
-    }
-
-    // ── State handlers ──────────────────────────────────────────────
-
-    private fun handleIdle(keyCode: Int, repeatCount: Int, eventTimeMs: Long): Boolean {
-        if (keyCode == KEY_VOLUME_UP && repeatCount == 0) {
-            currentState = State.WAITING_HOLD
-            volumeUpDownTimeMs = eventTimeMs
-            return true
-        }
-        return false
-    }
-
-    private fun handleWaiting(keyCode: Int, repeatCount: Int, eventTimeMs: Long): Boolean {
-        if (keyCode == KEY_VOLUME_UP && repeatCount > 0) {
-            if (eventTimeMs - volumeUpDownTimeMs >= holdThresholdMs) {
-                currentState = State.ARMED
-                tapCount = 0
-                firstTapTimeMs = 0L
-            }
-            return true
-        }
-        if (keyCode == KEY_VOLUME_DOWN) return true   // consume to block volume change
-        return false
-    }
-
-    private fun handleArmed(keyCode: Int, repeatCount: Int, eventTimeMs: Long): Boolean {
-        if (keyCode == KEY_VOLUME_UP) return true      // consume vol-up repeats
-
-        if (keyCode == KEY_VOLUME_DOWN) {
-            if (repeatCount > 0) return true           // ignore vol-down long-press
-
-            // Fresh tap
-            if (tapCount == 0) {
-                firstTapTimeMs = eventTimeMs
-            } else if (eventTimeMs - firstTapTimeMs > tapWindowMs) {
-                tapCount = 0                           // window expired, restart
-                firstTapTimeMs = eventTimeMs
-            }
-
-            tapCount++
-
-            if (tapCount >= requiredTaps) {
-                onTriggered()
-                reset()
-            }
-            return true
-        }
-        return false
-    }
-
-    companion object {
-        const val KEY_VOLUME_UP = 24    // android.view.KeyEvent.KEYCODE_VOLUME_UP
-        const val KEY_VOLUME_DOWN = 25  // android.view.KeyEvent.KEYCODE_VOLUME_DOWN
+        Log.d("VolumeKeyStateMachine", "reset")
+        sequence.clear()
+        lastEventTimeMs = 0L
     }
 }

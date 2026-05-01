@@ -1,4 +1,11 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
     <string name="app_name">QuickRec</string>
+    <string name="permission_rationale">錄音功能需要麥克風權限。請在設定中開啟。</string>
+    <string name="open_settings">開啟設定</string>
+    <string name="status_idle">待機中</string>
+    <string name="status_recording">錄音中...</string>
+    <string name="hotkey_hint">錄音：音量上 → 下 → 下\n錄影：音量下 → 上 → 上</string>
+    <string name="recording_saved">錄音已儲存</string>
+    <string name="video_not_implemented">錄影功能尚未開放</string>
 </resources>
