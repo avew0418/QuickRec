@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="utf-8"?>
+<shortcuts xmlns:android="http://schemas.android.com/apk/res/android">
+    <shortcut
+        android:shortcutId="start_recording"
+        android:enabled="true"
+        android:icon="@drawable/ic_launcher_foreground"
+        android:shortcutShortLabel="@string/shortcut_label"
+        android:shortcutLongLabel="@string/shortcut_label_long">
+        <intent
+            android:action="com.quickrec.ACTION_START_RECORDING"
+            android:targetPackage="com.quickrec"
+            android:targetClass="com.quickrec.MainActivity" />
+        <categories android:name="android.shortcut.conversation" />
+    </shortcut>
+</shortcuts>
